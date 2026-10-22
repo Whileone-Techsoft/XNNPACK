@@ -113,7 +113,6 @@ void xnn_qs8_qc8w_igemm_minmax_fp32_ukernel_4x16c8__neoni8mm(
       size_t k = kc;
       // 2x partial unrolled loop to load 8 bytes at a time.
       while (k >= 16 * sizeof(int8_t)) {
-        // Load a 4x16 block of activations.
         // Load a 4x16 block of activations with full 16-byte loads and
         // interleave each row pair into the 2x8 operands of SMMLA.
         const uint64x2_t vr0 = vreinterpretq_u64_s8(vld1q_s8(a0)); a0 += 16;

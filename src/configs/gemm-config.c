@@ -6632,24 +6632,18 @@ static void init_qs8_qc8w_gemm_config(void) {
   assert(qs8_qc8w_gemm_config.mr <= XNN_MAX_MR);
 }
 
-// Alternative qs8-qc8w config for GEMMs with very few channels per kernel
-// tap. The I8MM micro-kernels pad the channels of every tap to a multiple of 8
-// (kr = 8) while the NEON dot-product micro-kernels pad to a multiple of 4
-// (kr = 4), so with <= 4 channels the dot-product kernels perform up to 2x
-// fewer multiply-accumulates. Only populated on AArch64 CPUs where the default
-// qs8-qc8w config uses I8MM; otherwise left empty (mr == 0).
+// kr = 4 alternative to the kr = 8 I8MM config: with <= 4 channels per kernel
+// tap, kr = 8 pads each tap to twice the work.
 static void init_qs8_qc8w_dot_gemm_config(void) {
   #if XNN_ARCH_ARM64 && XNN_ENABLE_ARM_I8MM && XNN_ENABLE_ARM_DOTPROD
     const struct xnn_hardware_config* hardware_config = xnn_init_hardware_config();
     assert(hardware_config != NULL);
-    if (!(hardware_config->arch_flags & xnn_arch_arm_neon_i8mm) ||
-        !(hardware_config->arch_flags & xnn_arch_arm_neon_dot)) {
-      return;
-    }
     const struct xnn_gemm_config* default_config = xnn_init_qs8_qc8w_gemm_config();
     assert(default_config != NULL);
-    // Start from the default config so that the packing functions and element
-    // sizes stay in sync, then replace the micro-kernels and the K blocking.
+    if (!(hardware_config->arch_flags & xnn_arch_arm_neon_dot) ||
+        default_config->log2_kr != 3) {
+      return;
+    }
     qs8_qc8w_dot_gemm_config = *default_config;
     memset(&qs8_qc8w_dot_gemm_config.minmax, 0, sizeof(qs8_qc8w_dot_gemm_config.minmax));
     #if XNN_ENABLE_ASSEMBLY && !XNN_PLATFORM_IOS && !XNN_PLATFORM_MAC && !XNN_PLATFORM_WINDOWS
@@ -6662,6 +6656,8 @@ static void init_qs8_qc8w_dot_gemm_config(void) {
     qs8_qc8w_dot_gemm_config.minmax.gemm[XNN_MR_TO_INDEX(1)] = XNN_INIT_HMP_GEMM_UKERNEL(xnn_qs8_qc8w_gemm_minmax_fp32_ukernel_1x16c4__neondot);
     qs8_qc8w_dot_gemm_config.minmax.igemm[XNN_MR_TO_INDEX(1)] = XNN_INIT_HMP_IGEMM_UKERNEL(xnn_qs8_qc8w_igemm_minmax_fp32_ukernel_1x16c4__neondot);
     qs8_qc8w_dot_gemm_config.init.qs8_qc8w = xnn_init_qs8_qc8w_conv_minmax_fp32_neonv8_params;
+    qs8_qc8w_dot_gemm_config.pack_gemm_goi = (xnn_packw_gemm_goi_ukernel_fn) xnn_qs8_packw_gemm_goi_ukernel_x16c4__neondot;
+    qs8_qc8w_dot_gemm_config.pack_gemm_gio = (xnn_packw_gemm_gio_ukernel_fn) xnn_qs8_packw_gemm_gio_ukernel_x16c4__scalar;
     qs8_qc8w_dot_gemm_config.mr = 4;
     qs8_qc8w_dot_gemm_config.nr = 16;
     qs8_qc8w_dot_gemm_config.log2_kr = 2;
